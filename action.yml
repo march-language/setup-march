@@ -55,10 +55,28 @@ runs:
 
     - name: Set up OCaml
       if: steps.cache.outputs.cache-hit != 'true'
-      uses: ocaml/setup-ocaml@3
+      uses: ocaml/setup-ocaml@v3
       with:
         ocaml-compiler: ${{ inputs.ocaml-compiler }}
         cache: true
+
+    - name: Install system dependencies
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" = "macOS" ]; then
+          brew install blake3
+        else
+          git clone --depth 1 https://github.com/BLAKE3-team/BLAKE3.git /tmp/blake3
+          cd /tmp/blake3/c
+          gcc -O2 -shared -fPIC -o libblake3.so \
+            blake3.c blake3_dispatch.c blake3_portable.c \
+            blake3_sse2_x86-64_unix.S blake3_sse41_x86-64_unix.S \
+            blake3_avx2_x86-64_unix.S blake3_avx512_x86-64_unix.S
+          sudo cp libblake3.so /usr/local/lib/libblake3.so
+          sudo cp blake3.h /usr/local/include/blake3.h
+          sudo ldconfig
+        fi
 
     - name: Clone, build, and install March
       if: steps.cache.outputs.cache-hit != 'true'
@@ -79,17 +97,17 @@ runs:
         echo "::group::Install opam dependencies"
         cd "${SRC_DIR}"
         eval $(opam env)
-        opam install --yes --deps-only .
+        opam install --yes --deps-only ./march.opam ./forge.opam
         echo "::endgroup::"
 
-        echo "::group::Build march"
+        echo "::group::Build march and forge"
         eval $(opam env)
-        dune build -p march
+        dune build -p march,forge
         echo "::endgroup::"
 
-        echo "::group::Install march to ${INSTALL_DIR}"
+        echo "::group::Install march and forge to ${INSTALL_DIR}"
         mkdir -p "${INSTALL_DIR}"
-        dune install --prefix "${INSTALL_DIR}" march
+        dune install --prefix "${INSTALL_DIR}" march forge
         echo "::endgroup::"
 
     - name: Add March to PATH
