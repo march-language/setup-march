@@ -1,0 +1,106 @@
+name: 'Setup March'
+description: 'Install the March programming language for GitHub Actions workflows'
+author: 'march contributors'
+branding:
+  icon: 'terminal'
+  color: 'purple'
+
+inputs:
+  march-version:
+    description: 'March version to install: a branch name, tag, or commit SHA'
+    required: false
+    default: 'main'
+  ocaml-compiler:
+    description: 'OCaml compiler version to use when building March from source'
+    required: false
+    default: '5.3.0'
+  github-token:
+    description: 'GitHub token (used to avoid rate limits when querying the API)'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  march-version:
+    description: 'The commit SHA of the March version that was installed'
+    value: ${{ steps.set-outputs.outputs.march-version }}
+  march-path:
+    description: 'Path to the March installation directory'
+    value: ${{ steps.set-outputs.outputs.march-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve march ref to SHA
+      id: resolve
+      shell: bash
+      env:
+        MARCH_VERSION: ${{ inputs.march-version }}
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        REPO="https://github.com/march-language/march.git"
+        SHA=$(git ls-remote "${REPO}" "${MARCH_VERSION}" 2>/dev/null | head -1 | cut -f1)
+        if [ -z "${SHA}" ]; then
+          # Assume it's already a commit SHA
+          SHA="${MARCH_VERSION}"
+        fi
+        echo "sha=${SHA}" >> "${GITHUB_OUTPUT}"
+        echo "Resolved march-version '${MARCH_VERSION}' to SHA: ${SHA}"
+
+    - name: Restore March build cache
+      id: cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.local/march
+        key: setup-march-${{ steps.resolve.outputs.sha }}-${{ runner.os }}-ocaml-${{ inputs.ocaml-compiler }}
+
+    - name: Set up OCaml
+      if: steps.cache.outputs.cache-hit != 'true'
+      uses: ocaml/setup-ocaml@3
+      with:
+        ocaml-compiler: ${{ inputs.ocaml-compiler }}
+        cache: true
+
+    - name: Clone, build, and install March
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        MARCH_SHA: ${{ steps.resolve.outputs.sha }}
+      run: |
+        set -euo pipefail
+        REPO="https://github.com/march-language/march.git"
+        INSTALL_DIR="${HOME}/.local/march"
+        SRC_DIR="$(mktemp -d)/march-src"
+
+        echo "::group::Clone march @ ${MARCH_SHA}"
+        git clone "${REPO}" "${SRC_DIR}"
+        git -C "${SRC_DIR}" checkout "${MARCH_SHA}"
+        echo "::endgroup::"
+
+        echo "::group::Install opam dependencies"
+        cd "${SRC_DIR}"
+        eval $(opam env)
+        opam install --yes --deps-only .
+        echo "::endgroup::"
+
+        echo "::group::Build march"
+        eval $(opam env)
+        dune build -p march
+        echo "::endgroup::"
+
+        echo "::group::Install march to ${INSTALL_DIR}"
+        mkdir -p "${INSTALL_DIR}"
+        dune install --prefix "${INSTALL_DIR}" march
+        echo "::endgroup::"
+
+    - name: Add March to PATH
+      shell: bash
+      run: echo "${HOME}/.local/march/bin" >> "${GITHUB_PATH}"
+
+    - name: Set outputs
+      id: set-outputs
+      shell: bash
+      env:
+        MARCH_SHA: ${{ steps.resolve.outputs.sha }}
+      run: |
+        echo "march-version=${MARCH_SHA}" >> "${GITHUB_OUTPUT}"
+        echo "march-path=${HOME}/.local/march" >> "${GITHUB_OUTPUT}"

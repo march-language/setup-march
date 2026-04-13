@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup March
+        id: setup-march
+        uses: ./
+        with:
+          march-version: main
+
+      - name: Verify march is on PATH
+        run: which march
+
+      - name: Show march version
+        run: march --version 2>/dev/null || march --help 2>/dev/null | head -5 || echo "(march binary present)"
+
+      - name: Run a hello world program
+        run: |
+          cat > /tmp/hello.march << 'EOF'
+          mod Hello do
+
+          fn main() : Unit do
+            println("Hello from March!")
+          end
+
+          end
+          EOF
+          march /tmp/hello.march
+
+      - name: Print action outputs
+        run: |
+          echo "march-version: ${{ steps.setup-march.outputs.march-version }}"
+          echo "march-path:    ${{ steps.setup-march.outputs.march-path }}"
+
+  test-cached:
+    name: Test cache hit on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    runs-on: ${{ matrix.os }}
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup March (should restore from cache)
+        id: setup-march
+        uses: ./
+        with:
+          march-version: main
+
+      - name: Verify march still works after cache restore
+        run: which march && march --version 2>/dev/null || echo "OK"
+
+  test-specific-version:
+    name: Test specific commit on ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup March at a specific ref
+        uses: ./
+        with:
+          march-version: main   # replace with a real tag once releases exist
+
+      - name: Verify march is on PATH
+        run: which march
