@@ -111,6 +111,8 @@ runs:
         cp _build/default/forge/bin/main.exe "${INSTALL_DIR}/bin/forge"
         # Copy stdlib for MARCH_STDLIB resolution (exe-relative ../stdlib)
         cp -r stdlib "${INSTALL_DIR}/stdlib"
+        # Copy C runtime for native compilation (exe-relative ../runtime)
+        cp -r runtime "${INSTALL_DIR}/runtime"
         echo "::endgroup::"
 
     - name: Add March to PATH
