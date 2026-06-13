@@ -64,8 +64,12 @@ runs:
       shell: bash
       run: |
         if [ "$RUNNER_OS" = "macOS" ]; then
-          brew install blake3
+          # llvm (JIT), brotli, zstd are required to build March from source —
+          # mirror march's own CI (.github/workflows/ci.yml).
+          brew install blake3 brotli zstd llvm
         else
+          sudo apt-get update
+          sudo apt-get install -y llvm-dev libbrotli-dev libzstd-dev
           git clone --depth 1 https://github.com/BLAKE3-team/BLAKE3.git /tmp/blake3
           cd /tmp/blake3/c
           gcc -O2 -shared -fPIC -o libblake3.so \
