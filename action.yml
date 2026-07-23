@@ -59,8 +59,24 @@ runs:
       with:
         ocaml-compiler: ${{ inputs.ocaml-compiler }}
 
+    # NOT gated on the cache — these are RUNTIME dependencies, and the cache
+    # (path: ~/.local/march) does not contain them.
+    #
+    # The installed `march` binary dynamically links against libblake3,
+    # libbrotli, libzstd and llvm, which live in system paths
+    # (/usr/local/lib, /usr/lib/...) *outside* the cached directory. Gating
+    # this step on `cache-hit != 'true'` — as it was until this commit —
+    # meant that on a cache hit the binary was restored while the shared
+    # objects it needs were never installed, so every invocation of `march`
+    # failed with exit 127 (the loader cannot resolve a needed .so, which
+    # bash reports as "command not found").
+    #
+    # That failure mode is self-inflicted and delayed: the cold-cache run
+    # passes AND populates the cache, so the *next* run — and every run
+    # after it — breaks. Keep this step unconditional. The expensive part
+    # (cloning and building March, ~2.5 min) is what the cache is for and
+    # remains gated below.
     - name: Install system dependencies
-      if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         if [ "$RUNNER_OS" = "macOS" ]; then
@@ -70,6 +86,10 @@ runs:
         else
           sudo apt-get update
           sudo apt-get install -y llvm-dev libbrotli-dev libzstd-dev
+          # rm -rf first: this step is unconditional, so it may run twice in a
+          # job that invokes the action more than once; `git clone` into an
+          # existing non-empty directory is a hard error.
+          rm -rf /tmp/blake3
           git clone --depth 1 https://github.com/BLAKE3-team/BLAKE3.git /tmp/blake3
           cd /tmp/blake3/c
           gcc -O2 -shared -fPIC -o libblake3.so \
