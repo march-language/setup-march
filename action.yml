@@ -86,12 +86,14 @@ runs:
         else
           sudo apt-get update
           sudo apt-get install -y llvm-dev libbrotli-dev libzstd-dev
-          # rm -rf first: this step is unconditional, so it may run twice in a
-          # job that invokes the action more than once; `git clone` into an
-          # existing non-empty directory is a hard error.
-          rm -rf /tmp/blake3
-          git clone --depth 1 https://github.com/BLAKE3-team/BLAKE3.git /tmp/blake3
-          cd /tmp/blake3/c
+          # Clone into a fresh mktemp dir rather than a fixed path: this step
+          # is unconditional, so it can run twice in a job that invokes the
+          # action more than once, and `git clone` into an existing non-empty
+          # directory is a hard error. A unique dir per run cannot collide, so
+          # there is nothing to delete first. Matches the March clone below.
+          BLAKE3_SRC="$(mktemp -d)/blake3"
+          git clone --depth 1 https://github.com/BLAKE3-team/BLAKE3.git "${BLAKE3_SRC}"
+          cd "${BLAKE3_SRC}/c" || exit 1
           gcc -O2 -shared -fPIC -o libblake3.so \
             blake3.c blake3_dispatch.c blake3_portable.c \
             blake3_sse2_x86-64_unix.S blake3_sse41_x86-64_unix.S \
