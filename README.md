@@ -48,10 +48,16 @@ jobs:
 
 1. Resolves the `march-version` input to a commit SHA for reliable cache keying.
 2. Restores the March build from cache if available (keyed by SHA + OS + OCaml version).
-3. On a cache miss: sets up OCaml via [`ocaml/setup-ocaml`](https://github.com/ocaml/setup-ocaml), clones the march repo, installs opam dependencies, and builds with `dune`.
-4. Adds `march` to `PATH`.
+3. **Always** installs system dependencies (blake3, brotli, zstd, llvm).
+4. On a cache miss: sets up OCaml via [`ocaml/setup-ocaml`](https://github.com/ocaml/setup-ocaml), clones the march repo, installs opam dependencies, and builds with `dune`.
+5. Adds `march` to `PATH`.
 
-Cached runs skip OCaml setup entirely, keeping them fast.
+Cached runs skip OCaml setup and the March build — the expensive parts — keeping them fast.
+
+Step 3 is deliberately **not** cache-gated. The `march` binary dynamically
+links against these libraries, and they install to system paths outside the
+cached directory (`~/.local/march`). Skipping them on a cache hit yields a
+restored binary that cannot load, failing with exit 127 on every invocation.
 
 ## Platform support
 
